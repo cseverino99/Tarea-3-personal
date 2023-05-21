@@ -2,58 +2,88 @@ const express = require("express");
 const app = express();
 const port = process.env.PORT || 3001;
 
+
+const { Pool } = require('pg');
+
+const pool = new Pool({
+  host: 'langosta.ing.puc.cl',
+  port: 5432,
+  user: 'cseverinr@uc.cl',
+  password: '19637918',
+  database: 'cseverinr@uc.cl'
+});
+
+async function almacenarEvento(evento) {
+  try {
+    const query = 'INSERT INTO eventos (tipo_operacion, monto, cuenta_origen, banco_origen, cuenta_destino, banco_destino, id_mensaje) VALUES ($1, $2, $3, $4, $5, $6, $7)';
+    const values = [evento.tipoOperacion, 
+      evento.monto, evento.cuentaOrigen, evento.bancoOrigen, 
+      evento.cuentaDestino, evento.bancoDestino, evento.idMensaje];
+
+    const client = await pool.connect();
+    await client.query(query, values);
+    client.release();
+
+    console.log('Evento almacenado correctamente en la base de datos');
+  } catch (error) {
+    console.error('Error al almacenar el evento en la base de datos:', error);
+  }
+}
 app.get("/", (req, res) => res.type('html').send(html));
 
 app.listen(port, () => console.log(`Example app listening on port ${port}!`));
 
+app.use(express.json());
 
-const html = `
-<!DOCTYPE html>
-<html>
-  <head>
-    <title>Hello from Render!</title>
-    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.5.1/dist/confetti.browser.min.js"></script>
-    <script>
-      setTimeout(() => {
-        confetti({
-          particleCount: 100,
-          spread: 70,
-          origin: { y: 0.6 },
-          disableForReducedMotion: true
-        });
-      }, 500);
-    </script>
-    <style>
-      @import url("https://p.typekit.net/p.css?s=1&k=vnd5zic&ht=tk&f=39475.39476.39477.39478.39479.39480.39481.39482&a=18673890&app=typekit&e=css");
-      @font-face {
-        font-family: "neo-sans";
-        src: url("https://use.typekit.net/af/00ac0a/00000000000000003b9b2033/27/l?primer=7cdcb44be4a7db8877ffa5c0007b8dd865b3bbc383831fe2ea177f62257a9191&fvd=n7&v=3") format("woff2"), url("https://use.typekit.net/af/00ac0a/00000000000000003b9b2033/27/d?primer=7cdcb44be4a7db8877ffa5c0007b8dd865b3bbc383831fe2ea177f62257a9191&fvd=n7&v=3") format("woff"), url("https://use.typekit.net/af/00ac0a/00000000000000003b9b2033/27/a?primer=7cdcb44be4a7db8877ffa5c0007b8dd865b3bbc383831fe2ea177f62257a9191&fvd=n7&v=3") format("opentype");
-        font-style: normal;
-        font-weight: 700;
-      }
-      html {
-        font-family: neo-sans;
-        font-weight: 700;
-        font-size: calc(62rem / 16);
-      }
-      body {
-        background: white;
-      }
-      section {
-        border-radius: 1em;
-        padding: 1em;
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        margin-right: -50%;
-        transform: translate(-50%, -50%);
-      }
-    </style>
-  </head>
-  <body>
-    <section>
-      Hello from Render!
-    </section>
-  </body>
-</html>
-`
+
+app.post('/messages', (req, res) => {
+  const message = req.body.message;
+  const sub = req.body.subscription;
+
+  console.log(message);
+  console.log(sub);
+
+  const mensajeCodificado = Buffer.from(message.data, 'base64').toString('utf-8');
+  console.log(mensajeCodificado);
+
+  const tipoOperacion = parseInt(mensajeCodificado.substring(0, 4));
+  console.log(tipoOperacion);
+  let fondos = "";
+  //quiero hacer un if para ver si esque tipoOperacion es 2200 o 2400
+  if (tipoOperacion === 2200) {
+    //ahora cambia el valor de tipoOperacion a "Envio de fondos"
+    fondos = "Envio de fondos"
+  } else if (tipoOperacion === 2400) {
+    fondos = "Recepcion de fondos"
+  }
+
+  const idMensaje = mensajeCodificado.substring(4, 4 + 10);
+  const bancoOrigen = parseInt(mensajeCodificado.substring(14, 14 + 7));
+  const cuentaOrigen = parseInt(mensajeCodificado.substring(21, 21 + 10));
+  const bancoDestino = parseInt(mensajeCodificado.substring(31, 31 + 7));
+  const cuentaDestino = parseInt(mensajeCodificado.substring(38, 38 + 10));
+  const monto = parseInt(mensajeCodificado.substring(48, 48 + 16));
+
+  const evento = {
+    tipoOperacion: tipoOperacion,
+    idMensaje: idMensaje,
+    bancoOrigen: bancoOrigen,
+    cuentaOrigen: cuentaOrigen,
+    bancoDestino: bancoDestino,
+    cuentaDestino: cuentaDestino,
+    monto: monto
+  };
+  
+  // quiero imprimir en consola los valores de las variables en una sola frase
+  console.log("El tipo de operacion es: " + fondos + "de $" + monto +" desde la cuenta "+ cuentaOrigen + " del banco" + bancoOrigen + " hacia la  cuenta de destino: " + cuentaDestino + "en el banco de destino: "+ bancoDestino + "con el id de mensaje: " + idMensaje);
+  almacenarEvento(evento)
+    .then(() => {
+      res.status(200).send('OK');
+    })
+    .catch(error => {
+      console.error('Error al almacenar el evento en la base de datos:', error);
+      res.status(500).send('Error al almacenar el evento en la base de datos');
+    });
+  // Envía una respuesta al cliente
+});
+
